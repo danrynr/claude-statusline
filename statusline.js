@@ -210,6 +210,18 @@ function recordTool(st, rawName, inp) {
   bump(st.tools, short.length > 24 ? short.slice(0, 23) + '…' : short);
 }
 
+// Whether a command is on PATH, by file lookups alone (no process spawned).
+function onPath(cmd) {
+  const exts = process.platform === 'win32' ? (process.env.PATHEXT || '.EXE;.CMD').split(';') : [''];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try { if (fs.statSync(path.join(dir, cmd + ext)).isFile()) return true; } catch {}
+    }
+  }
+  return false;
+}
+
 function findUp(start, name) {
   let dir = path.resolve(start);
   for (;;) {
@@ -270,7 +282,10 @@ const branch = clean(gitBranch(cwd));
 const model = clean(input.model && (input.model.display_name || input.model.id));
 const effort = effortLevel(input, cwd);
 const mode = cavemanMode(input.session_id);
-const style = clean(input.output_style && input.output_style.name);
+const enabledPlugins = readJson(path.join(CFG, 'settings.json')).enabledPlugins || {};
+// Caveman and codegraph are optional: show them only for users who have them.
+const hasCaveman = !!mode || Object.keys(enabledPlugins).some((k) => enabledPlugins[k] && k.startsWith('caveman@'));
+const style = input.output_style && input.output_style.name;
 
 const cw = input.context_window || {};
 const size = cw.context_window_size || 200000;
@@ -297,7 +312,8 @@ const lines = [];
 const head = [];
 if (model) head.push(paint(c.bold + c.yellow, model));
 if (effort) head.push(effortBadge(effort));
-head.push(mode && mode !== 'off' ? paint(c.yellow, `🪨 ${mode}`) : dim('caveman off'));
+if (mode && mode !== 'off') head.push(paint(c.yellow, `🪨 ${mode}`));
+else if (hasCaveman) head.push(dim('caveman off'));
 if (style && style !== 'default') head.push(dim(style));
 if (input.vim && input.vim.mode) head.push(dim(`[${clean(input.vim.mode, 20)}]`));
 let where = paint(c.cyan, cwdDisplay);
@@ -351,8 +367,8 @@ const cgRoot = findUp(cwd, '.codegraph');
 const cgUses = scan.mcp.codegraph || 0;
 const cg = cgRoot
   ? paint(c.green, '●') + ' codegraph ' + (cgUses ? paint(c.green, `${cgUses}×`) : paint(c.yellow, 'idle'))
-  : dim('○ codegraph' + (cgUses ? ` ${cgUses}×` : ' no index'));
-const enabled = Object.values(readJson(path.join(CFG, 'settings.json')).enabledPlugins || {}).filter(Boolean).length;
+  : cgUses || onPath('codegraph') ? dim('○ codegraph' + (cgUses ? ` ${cgUses}×` : ' no index')) : '';
+const enabled = Object.values(enabledPlugins).filter(Boolean).length;
 const pluginsUsed = top(scan.plugins, 4).map(([k, v]) => `${k} ${dim(v)}`);
 if (mode && mode !== 'off' && !scan.plugins.caveman) pluginsUsed.unshift(`caveman ${dim('hook')}`);
 const mcpUsed = Object.keys(scan.mcp).filter((k) => k !== 'codegraph');
