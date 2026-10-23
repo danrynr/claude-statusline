@@ -162,6 +162,18 @@ function recordTool(st, name, inp) {
   bump(st.tools, short.length > 24 ? short.slice(0, 23) + '…' : short);
 }
 
+// Whether a command is on PATH, by file lookups alone (no process spawned).
+function onPath(cmd) {
+  const exts = process.platform === 'win32' ? (process.env.PATHEXT || '.EXE;.CMD').split(';') : [''];
+  for (const dir of (process.env.PATH || '').split(path.delimiter)) {
+    if (!dir) continue;
+    for (const ext of exts) {
+      try { if (fs.statSync(path.join(dir, cmd + ext)).isFile()) return true; } catch {}
+    }
+  }
+  return false;
+}
+
 function findUp(start, name) {
   let dir = path.resolve(start);
   for (;;) {
@@ -307,7 +319,7 @@ const cgRoot = findUp(cwd, '.codegraph');
 const cgUses = scan.mcp.codegraph || 0;
 const cg = cgRoot
   ? paint(c.green, '●') + ' codegraph ' + (cgUses ? paint(c.green, `${cgUses}×`) : paint(c.yellow, 'idle'))
-  : cgUses ? dim(`○ codegraph ${cgUses}×`) : '';
+  : cgUses || onPath('codegraph') ? dim('○ codegraph' + (cgUses ? ` ${cgUses}×` : ' no index')) : '';
 const enabled = Object.values(enabledPlugins).filter(Boolean).length;
 const pluginsUsed = top(scan.plugins, 4).map(([k, v]) => `${k} ${dim(v)}`);
 if (mode && mode !== 'off' && !scan.plugins.caveman) pluginsUsed.unshift(`caveman ${dim('hook')}`);
