@@ -50,4 +50,5 @@ Bars are green up to 50%, yellow up to 80%, red after.
 
 - Effort is read from the status line input, then `CLAUDE_CODE_EFFORT_LEVEL`, then `effortLevel` in settings files. If none is set, it is hidden.
 - Caveman mode is read from `~/.claude/.caveman-sessions/<session>.mode`, falling back to `~/.claude/.caveman-active`.
-- Tool and plugin counts come from the session transcript. The read position is cached in the system temp dir as `cc-statusline-<session>.json`, so each refresh only reads new lines.
+- Tool and plugin counts come from the session transcript. The read position is cached per session in `~/.claude/cache/statusline/` (private to your user), so each refresh only reads new lines.
+- Every string from outside the script (transcript, project settings, folder and branch names) has control characters stripped before it is printed, and effort is shown only for known levels.
