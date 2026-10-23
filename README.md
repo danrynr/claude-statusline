@@ -34,7 +34,7 @@ Windows (PowerShell):
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-Both installers copy `statusline.js` to `~/.claude/` (or `$CLAUDE_CONFIG_DIR`), back up `settings.json`, and set its `statusLine` entry. Every other setting is kept.
+Both installers copy `statusline.js` to `~/.claude/` (or `$CLAUDE_CONFIG_DIR`) and the [`plugin-actions` mod](#buttons-the-plugin-actions-mod) to `~/.claude/mods/plugin-actions/`. They back up `settings.json`, set its `statusLine` entry, and add the mod folder to `env.CLAUDE_CODE_PLUGIN_DIRS`, so the mod loads in every new session. Every other setting is kept, including plugin dirs already listed.
 
 ## What each row shows
 
@@ -106,7 +106,7 @@ The mod needs Claude Code v2.1.287 or later. To load it for one session:
 claude --plugin-dir mod/plugin-actions
 ```
 
-To load it in every session, set `CLAUDE_CODE_PLUGIN_DIRS` to the folder's absolute path, either in your environment or in the `env` block of `~/.claude/settings.json`.
+The installers load it in every session for you. To do that by hand instead, set `CLAUDE_CODE_PLUGIN_DIRS` to the folder's absolute path, either in your environment or in the `env` block of `~/.claude/settings.json`. Separate multiple paths with `:` on macOS / Linux or `;` on Windows. To stop loading it, remove its path from that variable.
 
 Mods run inside Claude Code with your permissions. Read `mod/plugin-actions/hooks/register.tsx` before you load it. To check what it hooks and calls, run `claude plugin validate mod/plugin-actions`. Its tests run with `claude plugin test mod/plugin-actions`.
 
