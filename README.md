@@ -3,9 +3,11 @@
 A multi-line status line for Claude Code:
 
 ```
-Opus 5.5  ·  high  ·  🪨 caveman   │   ~/project ⎇ dev
+Opus 5.5  ·  ● high  ·  🪨 caveman   │   ~/project ⎇ dev
 CTX    ||||||||||||||||||||  42%   84.2k / 200k   116k free   cache 80.0k · new 4.2k · out 900
-USAGE  5h ||||||||||||  23% ↻2h13m   7d ||||||||||||  61% ↻3d11h   session 512k in · 18.0k out · $3.42
+5H     ||||||||||||||||||||  23%   ↻ resets in 2h 13m
+7D     ||||||||||||||||||||  61%   ↻ resets in 3d 11h
+SESS   512k in  ·  18.0k out  ·  $3.42 api-equiv
 TOOLS  31 calls   Bash 22  Edit 5  Read 3  Write 1   last Bash
 EXT    ● codegraph 2×   plugins 36: caveman hook
 ```
@@ -40,7 +42,8 @@ Both installers copy `statusline.js` to `~/.claude/` (or `$CLAUDE_CONFIG_DIR`), 
 | --- | --- |
 | header | model, effort level, caveman mode, output style, folder, git branch |
 | `CTX` | context window used, free tokens, cached / new / last output tokens; warns at 80% |
-| `USAGE` | plan 5-hour and 7-day usage with reset times (subscription logins only), session token totals, API-equivalent cost |
+| `5H` / `7D` | plan 5-hour and 7-day usage with time until reset (subscription logins only); `LIMITS plan limits n/a` otherwise |
+| `SESS` | session input and output token totals, API-equivalent cost |
 | `TOOLS` | tool calls this session, the most used ones, the last one |
 | `EXT` | codegraph index and usage, enabled plugins and which ones this session used, MCP servers called |
 
