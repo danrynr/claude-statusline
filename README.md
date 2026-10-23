@@ -46,6 +46,24 @@ Both installers copy `statusline.js` to `~/.claude/` (or `$CLAUDE_CONFIG_DIR`), 
 
 Bars are green up to 50%, yellow up to 80%, red after.
 
+## Buttons: the `plugin-actions` mod
+
+A status line can't run commands when clicked. It can only open links. For real buttons, `mod/plugin-actions` is a [mod](https://code.claude.com/docs/en/plugins/mods/overview) that draws a band above the prompt when something needs doing:
+
+- **Reload plugins**: plugins were installed or updated on disk since the session loaded them. Runs `/reload-plugins`.
+- **Reload skills**: a `SKILL.md` under `~/.claude/skills` or `.claude/skills` changed since skills were loaded. Runs `/reload-skills`.
+- **Update `<plugin>`** / **Update all**: runs `claude plugin update <plugin>@<marketplace>`. Prereleases are never offered. If a marketplace declares an install command, the mod doesn't accept it for you. It shows a toast asking you to run the update in a terminal.
+- **List ▸** (hotkey `l`): expands the band into the full list. Each update has a `[ ]` toggle, with **Select all**, **Select none** and **Update selected** (hotkey `u`). The list also names the plugins and skills that changed on disk. **Collapse ▾** folds the band back to one row.
+- **Hide**: hides the band until something new comes up. Run `/plugin-actions` to bring it back, opened on the full list.
+
+The mod needs Claude Code v2.1.287 or later. To try it for one session:
+
+```sh
+claude --plugin-dir mod/plugin-actions
+```
+
+Mods run inside Claude Code with your permissions. Read `mod/plugin-actions/hooks/register.tsx` before you load it. To check what it hooks and calls, run `claude plugin validate mod/plugin-actions`. Its tests run with `claude plugin test mod/plugin-actions`.
+
 ## Notes
 
 - Effort is read from the status line input, then `CLAUDE_CODE_EFFORT_LEVEL`, then `effortLevel` in settings files. If none is set, it is hidden.

@@ -1,0 +1,6 @@
+{
+  "name": "plugin-actions",
+  "version": "0.1.0",
+  "description": "Band above the prompt with buttons to reload plugins and skills and to install stable plugin updates.",
+  "types": "./types/index.d.ts"
+}
