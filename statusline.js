@@ -24,6 +24,10 @@ function readJson(file) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return {}; }
 }
 
+// Strip C0/C1 control characters (incl. ESC) from any string that did not come from this
+// script, so transcripts, project settings or folder names can't inject terminal escapes.
+const clean = (s, max = 80) => String(s == null ? '' : s).replace(/[\x00-\x1f\x7f-\x9f]/g, '').slice(0, max);
+
 function fmtTokens(n) {
   if (n == null || isNaN(n)) return '?';
   if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
@@ -79,22 +83,67 @@ function cavemanMode(sessionId) {
   } catch { return ''; }
 }
 
+// Only known levels are returned; project settings files are untrusted input.
+const EFFORT_LEVELS = ['low', 'medium', 'high', 'xhigh', 'max'];
 function effortLevel(input, cwd) {
+  const known = (v) => {
+    const s = typeof v === 'string' ? v.toLowerCase() : '';
+    return EFFORT_LEVELS.includes(s) ? s : '';
+  };
   const e = input.effort;
-  if (e && typeof e === 'object' && e.level) return e.level;
-  if (typeof e === 'string' && e) return e;
-  if (process.env.CLAUDE_CODE_EFFORT_LEVEL) return process.env.CLAUDE_CODE_EFFORT_LEVEL;
-  // Most specific settings file wins.
-  const files = [
-    path.join(cwd, '.claude', 'settings.local.json'),
-    path.join(cwd, '.claude', 'settings.json'),
-    path.join(CFG, 'settings.json'),
+  const candidates = [
+    e && typeof e === 'object' ? e.level : e,
+    process.env.CLAUDE_CODE_EFFORT_LEVEL,
+    // Most specific settings file wins.
+    readJson(path.join(cwd, '.claude', 'settings.local.json')).effortLevel,
+    readJson(path.join(cwd, '.claude', 'settings.json')).effortLevel,
+    readJson(path.join(CFG, 'settings.json')).effortLevel,
   ];
-  for (const f of files) {
-    const lvl = readJson(f).effortLevel;
+  for (const v of candidates) {
+    const lvl = known(v);
     if (lvl) return lvl;
   }
   return '';
+}
+
+// Per-user cache dir (not the shared temp dir), created private.
+function cacheDir() {
+  const dir = path.join(CFG, 'cache', 'statusline');
+  try { fs.mkdirSync(dir, { recursive: true, mode: 0o700 }); } catch {}
+  return dir;
+}
+
+// Load a cache file only if it is a regular file (not a symlink) and its fields are sane.
+function loadCache(cacheFile, file, size, empty) {
+  try {
+    if (!fs.lstatSync(cacheFile).isFile()) return null;
+  } catch { return null; }
+  const st = readJson(cacheFile);
+  if (!st || st.file !== file || !Number.isInteger(st.offset) || st.offset < 0 || st.offset > size) return null;
+  const counts = (o) => {
+    const out = {};
+    if (o && typeof o === 'object') {
+      for (const [k, v] of Object.entries(o)) if (Number.isInteger(v) && v > 0) out[clean(k, 40)] = v;
+    }
+    return out;
+  };
+  return {
+    ...empty, file, offset: st.offset,
+    ids: Array.isArray(st.ids) ? st.ids.filter((x) => typeof x === 'string').slice(-2000) : [],
+    tools: counts(st.tools), plugins: counts(st.plugins), mcp: counts(st.mcp),
+    last: clean(st.last, 40),
+  };
+}
+
+// Write via a fresh temp file + rename, so a pre-planted symlink is replaced, never followed.
+function saveCache(cacheFile, st) {
+  const tmp = `${cacheFile}.${process.pid}.tmp`;
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(st), { flag: 'wx', mode: 0o600 });
+    fs.renameSync(tmp, cacheFile);
+  } catch {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 }
 
 // Scans the transcript incrementally (cached offset per session), so refreshes stay fast.
@@ -102,11 +151,9 @@ function scanTranscript(file, sessionId) {
   const empty = { offset: 0, ids: [], tools: {}, plugins: {}, mcp: {}, last: '' };
   if (!file || !fs.existsSync(file)) return empty;
   const id = /^[A-Za-z0-9_-]{1,128}$/.test(sessionId || '') ? sessionId : 'unknown';
-  const cacheFile = path.join(os.tmpdir(), `cc-statusline-${id}.json`);
-  let st = readJson(cacheFile);
-  if (!st || st.file !== file || typeof st.offset !== 'number') st = { ...empty, file };
+  const cacheFile = path.join(cacheDir(), `${id}.json`);
   const size = fs.statSync(file).size;
-  if (size < st.offset) st = { ...empty, file };
+  const st = loadCache(cacheFile, file, size, empty) || { ...empty, file };
   if (size > st.offset) {
     const fd = fs.openSync(file, 'r');
     const buf = Buffer.alloc(size - st.offset);
@@ -131,14 +178,15 @@ function scanTranscript(file, sessionId) {
       st.ids = [...seen].slice(-2000);
       st.offset += Buffer.byteLength(text.slice(0, end + 1), 'utf8');
     }
-    try { fs.writeFileSync(cacheFile, JSON.stringify(st)); } catch {}
+    saveCache(cacheFile, st);
   }
   return st;
 }
 
 function bump(obj, key) { obj[key] = (obj[key] || 0) + 1; }
 
-function recordTool(st, name, inp) {
+function recordTool(st, rawName, inp) {
+  const name = clean(rawName, 120);
   st.last = name;
   let short = name;
   let m;
@@ -150,10 +198,10 @@ function recordTool(st, name, inp) {
     bump(st.mcp, m[1]); short = `${m[1]}:${m[2]}`;
   }
   if (name === 'Skill' && typeof inp.skill === 'string' && inp.skill.includes(':')) {
-    bump(st.plugins, inp.skill.split(':')[0]);
+    bump(st.plugins, clean(inp.skill.split(':')[0], 40));
   }
   if (name === 'Agent' && typeof inp.subagent_type === 'string' && inp.subagent_type.includes(':')) {
-    bump(st.plugins, inp.subagent_type.split(':')[0]);
+    bump(st.plugins, clean(inp.subagent_type.split(':')[0], 40));
   }
   if (name === 'Bash' || name === 'PowerShell') {
     if (/\bcodegraph(\.cmd)?\s/.test(String(inp.command || ''))) bump(st.mcp, 'codegraph');
@@ -206,7 +254,7 @@ const RAINBOW = [[255, 95, 95], [255, 175, 0], [255, 255, 95], [95, 215, 95], [9
 const rgb = ([r, g, b]) => `\x1b[38;2;${r};${g};${b}m`;
 function effortBadge(level) {
   const st = EFFORT_STYLE[String(level).toLowerCase()];
-  if (!st) return dim(level);
+  if (!st) return '';
   const text = `${st.sym} ${level}`;
   if (st.rainbow) return [...text].map((ch, i) => rgb(RAINBOW[i % RAINBOW.length]) + ch).join('') + c.reset;
   const theme = String(readJson(path.join(os.homedir(), '.claude.json')).theme || 'dark');
@@ -229,9 +277,9 @@ const home = os.homedir();
 const norm = (s) => (process.platform === 'win32' ? s.toLowerCase() : s);
 const underHome = norm(cwd) === norm(home) || norm(cwd).startsWith(norm(home) + path.sep);
 let cwdDisplay = underHome ? '~' + cwd.slice(home.length) : cwd;
-cwdDisplay = cwdDisplay.split(path.sep).join('/');
-const branch = gitBranch(cwd);
-const model = input.model && (input.model.display_name || input.model.id);
+cwdDisplay = clean(cwdDisplay.split(path.sep).join('/'), 200);
+const branch = clean(gitBranch(cwd));
+const model = clean(input.model && (input.model.display_name || input.model.id));
 const effort = effortLevel(input, cwd);
 const mode = cavemanMode(input.session_id);
 const enabledPlugins = readJson(path.join(CFG, 'settings.json')).enabledPlugins || {};
@@ -267,7 +315,7 @@ if (effort) head.push(effortBadge(effort));
 if (mode && mode !== 'off') head.push(paint(c.yellow, `🪨 ${mode}`));
 else if (hasCaveman) head.push(dim('caveman off'));
 if (style && style !== 'default') head.push(dim(style));
-if (input.vim && input.vim.mode) head.push(dim(`[${input.vim.mode}]`));
+if (input.vim && input.vim.mode) head.push(dim(`[${clean(input.vim.mode, 20)}]`));
 let where = paint(c.cyan, cwdDisplay);
 if (branch) where += ' ' + paint(c.magenta, `⎇ ${branch}`);
 lines.push(head.join(dim('  ·  ')) + gap + dim('│') + gap + where);

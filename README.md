@@ -115,4 +115,5 @@ Mods run inside Claude Code with your permissions. Read `mod/plugin-actions/hook
 - Effort is read from the status line input, then `CLAUDE_CODE_EFFORT_LEVEL`, then `effortLevel` in settings files. If none is set, it is hidden.
 - Caveman and codegraph are optional. The caveman badge shows only when the caveman plugin is enabled or its mode files exist. For codegraph, see [Codegraph status](#codegraph-status). Other plugins, such as superpowers, appear in `EXT` only once the session uses them.
 - Caveman mode is read from `~/.claude/.caveman-sessions/<session>.mode`, falling back to `~/.claude/.caveman-active`.
-- Tool and plugin counts come from the session transcript. The read position is cached in the system temp dir as `cc-statusline-<session>.json`, so each refresh only reads new lines.
+- Tool and plugin counts come from the session transcript. The read position is cached per session in `~/.claude/cache/statusline/` (private to your user), so each refresh only reads new lines.
+- Every string from outside the script (transcript, project settings, folder and branch names) has control characters stripped before it is printed, and effort is shown only for known levels.
